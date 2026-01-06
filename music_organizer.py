@@ -513,16 +513,135 @@ def remove_duplicates(conn, duplicates, execute=False):
     print(f"Files moved to: {MUSIC_DIR / '_Duplicates_Removed'}")
 
 
+def find_partial_albums(conn, min_tracks=5):
+    """Find albums with 5+ tracks that have gaps in track numbering."""
+    cursor = conn.cursor()
+
+    # Get albums with min_tracks or more
+    cursor.execute('''
+        SELECT artist, album, file_path
+        FROM tracks
+        WHERE (artist, album) IN (
+            SELECT artist, album FROM tracks
+            WHERE album NOT LIKE '%Mixed%'
+            GROUP BY artist, album
+            HAVING COUNT(*) >= ?
+        )
+        ORDER BY artist, album
+    ''', (min_tracks,))
+
+    albums = defaultdict(lambda: {'tracks': [], 'path': None})
+    for artist, album, file_path in cursor.fetchall():
+        key = (artist, album)
+        albums[key]['path'] = Path(file_path).parent
+        # Get track number for this file
+        cursor.execute('SELECT track_number FROM tracks WHERE file_path = ?', (file_path,))
+        track_num = cursor.fetchone()[0]
+        if track_num is not None:
+            albums[key]['tracks'].append(track_num)
+
+    partial_albums = []
+
+    for (artist, album), data in albums.items():
+        track_nums = sorted(set(data['tracks']))  # Remove duplicates and sort
+
+        if not track_nums:
+            continue  # No track numbers - can't determine
+
+        max_track = max(track_nums)
+        num_tracks = len(track_nums)
+
+        # Check if there are gaps (max track number > number of tracks we have)
+        if max_track > num_tracks:
+            missing = set(range(1, max_track + 1)) - set(track_nums)
+            folder_path = data['path']
+
+            # Skip if already marked as partial
+            if folder_path and '(partial)' not in folder_path.name:
+                partial_albums.append({
+                    'artist': artist,
+                    'album': album,
+                    'folder': folder_path,
+                    'track_count': num_tracks,
+                    'max_track': max_track,
+                    'missing': sorted(missing)
+                })
+
+    return partial_albums
+
+
+def mark_partial_albums(conn, min_tracks=5, execute=False):
+    """Find and optionally rename partial albums."""
+    partial = find_partial_albums(conn, min_tracks)
+
+    if not partial:
+        print("No partial albums found (all albums have sequential track numbers).")
+        return []
+
+    print(f"\n=== Partial Albums ({len(partial)} found) ===")
+    print("(Albums with 5+ tracks but missing track numbers)\n")
+
+    for i, album in enumerate(partial, 1):
+        missing_str = ', '.join(map(str, album['missing'][:5]))
+        if len(album['missing']) > 5:
+            missing_str += f", ... ({len(album['missing'])} total)"
+
+        print(f"{i}. {album['artist']} - {album['album']}")
+        print(f"   Tracks: {album['track_count']}, Max#: {album['max_track']}, Missing: {missing_str}")
+        print(f"   Folder: {album['folder'].name}")
+        new_name = album['folder'].name + ' (partial)'
+        print(f"   -> {new_name}")
+        print()
+
+    if not execute:
+        print("Run with --mark-partial to rename these folders.")
+        return partial
+
+    # Execute renames
+    cursor = conn.cursor()
+    renamed = 0
+    errors = 0
+
+    for album in partial:
+        old_path = album['folder']
+        new_name = old_path.name + ' (partial)'
+        new_path = old_path.parent / new_name
+
+        try:
+            if old_path.exists() and not new_path.exists():
+                shutil.move(str(old_path), str(new_path))
+
+                # Update database paths
+                cursor.execute('''
+                    UPDATE tracks
+                    SET file_path = REPLACE(file_path, ?, ?)
+                    WHERE file_path LIKE ?
+                ''', (str(old_path), str(new_path), str(old_path) + '%'))
+
+                print(f"  Renamed: {old_path.name} -> {new_name}")
+                renamed += 1
+        except Exception as e:
+            print(f"  Error renaming {old_path.name}: {e}")
+            errors += 1
+
+    conn.commit()
+
+    print(f"\nRenamed {renamed} folders ({errors} errors)")
+    return partial
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Music Library Organizer',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''
 Examples:
-  python music_organizer.py --preview          # Preview reorganization
-  python music_organizer.py --execute          # Execute reorganization
-  python music_organizer.py --duplicates       # Find duplicates in Mixed
+  python music_organizer.py --preview           # Preview reorganization
+  python music_organizer.py --execute           # Execute reorganization
+  python music_organizer.py --duplicates        # Find duplicates in Mixed
   python music_organizer.py --remove-duplicates # Remove duplicates
+  python music_organizer.py --find-partial      # Find albums with missing tracks
+  python music_organizer.py --mark-partial      # Rename partial albums
         '''
     )
     parser.add_argument('--preview', action='store_true',
@@ -533,12 +652,17 @@ Examples:
                        help='Find duplicates in Mixed folders')
     parser.add_argument('--remove-duplicates', action='store_true',
                        help='Remove duplicates from Mixed folders')
+    parser.add_argument('--find-partial', action='store_true',
+                       help='Find albums with missing tracks (based on track numbers)')
+    parser.add_argument('--mark-partial', action='store_true',
+                       help='Rename partial albums to "Artist - Album (partial)"')
     parser.add_argument('--min-tracks', type=int, default=5,
                        help='Minimum tracks for complete album (default: 5)')
 
     args = parser.parse_args()
 
-    if not any([args.preview, args.execute, args.duplicates, args.remove_duplicates]):
+    if not any([args.preview, args.execute, args.duplicates, args.remove_duplicates,
+                args.find_partial, args.mark_partial]):
         parser.print_help()
         return
 
@@ -558,6 +682,25 @@ Examples:
                     remove_duplicates(conn, duplicates, execute=True)
                 else:
                     print("Cancelled.")
+
+        elif args.find_partial:
+            mark_partial_albums(conn, min_tracks, execute=False)
+
+        elif args.mark_partial:
+            partial = find_partial_albums(conn, min_tracks)
+            if partial:
+                print(f"\n=== Partial Albums ({len(partial)} found) ===\n")
+                for i, album in enumerate(partial, 1):
+                    print(f"{i}. {album['artist']} - {album['album']}")
+                    print(f"   Missing tracks: {album['missing'][:5]}{'...' if len(album['missing']) > 5 else ''}")
+
+                confirm = input(f"\nRename {len(partial)} folders to include '(partial)'? (yes/no): ")
+                if confirm.lower() == 'yes':
+                    mark_partial_albums(conn, min_tracks, execute=True)
+                else:
+                    print("Cancelled.")
+            else:
+                print("No partial albums found.")
 
         elif args.preview or args.execute:
             print("Analyzing library...")

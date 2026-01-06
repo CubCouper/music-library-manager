@@ -8,6 +8,7 @@ A set of Python tools to catalog, organize, and deduplicate a music library.
 - **Organize** - Standardizes folder and file naming conventions
 - **Consolidate** - Moves incomplete albums and singles into "Artist - Mixed" folders
 - **Deduplicate** - Identifies and removes duplicate tracks
+- **Partial Detection** - Finds albums with missing tracks based on track number metadata
 
 ## Requirements
 
@@ -66,10 +67,23 @@ python music_organizer.py --remove-duplicates
 python music_organizer.py --preview --min-tracks 8
 ```
 
+### Finding Partial Albums
+
+Albums with 5+ tracks but non-sequential track numbers likely have missing tracks:
+
+```bash
+# Find albums with missing tracks (based on track number gaps)
+python music_organizer.py --find-partial
+
+# Rename those folders to "Artist - Album (partial)"
+python music_organizer.py --mark-partial
+```
+
 ## Naming Conventions
 
 ### Folders
 - Complete albums: `Artist - Album`
+- Partial albums (missing tracks): `Artist - Album (partial)`
 - Incomplete albums/singles: `Artist - Mixed`
 
 ### Files
