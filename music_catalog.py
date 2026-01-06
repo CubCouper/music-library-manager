@@ -47,6 +47,15 @@ DB_FILE = MUSIC_DIR / "music_catalog.db"
 AUDIO_EXTENSIONS = {'.mp3', '.m4a', '.wav', '.flac', '.ogg', '.wma', '.aac'}
 
 
+def safe_print(text):
+    """Print text safely, handling Unicode encoding issues on Windows."""
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        # Replace problematic characters
+        print(text.encode('ascii', 'replace').decode('ascii'))
+
+
 def create_database():
     """Create the SQLite database schema."""
     conn = sqlite3.connect(DB_FILE)
@@ -179,7 +188,7 @@ def get_file_hash(file_path, quick=True):
 
         return hasher.hexdigest()
     except Exception as e:
-        print(f"  Error hashing {file_path}: {e}")
+        safe_print(f"  Error hashing {file_path}: {e}")
         return None
 
 
@@ -345,7 +354,7 @@ def scan_library(conn, force_rescan=False):
                         file_path_str
                     ))
                     stats['updated'] += 1
-                    print(f"  Updated: {artist} - {title}")
+                    safe_print(f"  Updated: {artist} - {title}")
                 else:
                     cursor.execute('''
                         INSERT INTO tracks (
@@ -367,10 +376,10 @@ def scan_library(conn, force_rescan=False):
                         now, file_mtime, now
                     ))
                     stats['new'] += 1
-                    print(f"  Added: {artist} - {title}")
+                    safe_print(f"  Added: {artist} - {title}")
 
             except Exception as e:
-                print(f"  Error processing {file_path}: {e}")
+                safe_print(f"  Error processing {file_path}: {e}")
                 stats['errors'] += 1
 
     # Remove entries for deleted files
@@ -378,7 +387,7 @@ def scan_library(conn, force_rescan=False):
         if file_path not in found_files:
             cursor.execute("DELETE FROM tracks WHERE file_path = ?", (file_path,))
             stats['removed'] += 1
-            print(f"  Removed: {file_path}")
+            safe_print(f"  Removed: {file_path}")
 
     conn.commit()
 
@@ -418,9 +427,9 @@ def find_duplicates(conn):
         tracks = cursor.fetchall()
         print(f"\nDuplicate group ({count} files with identical content):")
         for artist, title, album, path, size in tracks:
-            print(f"  [{size//1024}KB] {artist} - {title}")
-            print(f"           Album: {album}")
-            print(f"           Path: {path}")
+            safe_print(f"  [{size//1024}KB] {artist} - {title}")
+            safe_print(f"           Album: {album}")
+            safe_print(f"           Path: {path}")
         duplicates.append(('exact', tracks))
 
     # Method 2: Same normalized artist + title (potential duplicates)
@@ -454,13 +463,13 @@ def find_duplicates(conn):
         distinct_hashes = cursor.fetchone()[0]
 
         if distinct_hashes > 1 or distinct_hashes == 0:
-            print(f"\nPotential duplicate: '{artist_norm}' - '{title_norm}' ({count} versions):")
+            safe_print(f"\nPotential duplicate: '{artist_norm}' - '{title_norm}' ({count} versions):")
             for artist, title, album, path, size, duration, bitrate in tracks:
                 duration_str = f"{int(duration//60)}:{int(duration%60):02d}" if duration else "?"
                 bitrate_str = f"{bitrate//1000}kbps" if bitrate else "?"
-                print(f"  [{duration_str}, {bitrate_str}] {artist} - {title}")
-                print(f"           Album: {album}")
-                print(f"           Path: {path}")
+                safe_print(f"  [{duration_str}, {bitrate_str}] {artist} - {title}")
+                safe_print(f"           Album: {album}")
+                safe_print(f"           Path: {path}")
             duplicates.append(('potential', tracks))
 
     if not hash_duplicates and not title_duplicates:
@@ -517,7 +526,7 @@ def show_statistics(conn):
         LIMIT 10
     ''')
     for artist, count in cursor.fetchall():
-        print(f"  {artist}: {count} tracks")
+        safe_print(f"  {artist}: {count} tracks")
 
     # Unique albums
     cursor.execute("SELECT COUNT(DISTINCT album) FROM tracks WHERE album IS NOT NULL AND album != ''")
