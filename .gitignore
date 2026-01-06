@@ -13,6 +13,9 @@
 # Logs
 reorganize_log_*.txt
 
+# Cache
+musicbrainz_cache.json
+
 # Removed duplicates folder
 _Duplicates_Removed/
 

@@ -25,6 +25,7 @@ pip install mutagen
 |------|-------------|
 | `music_catalog.py` | Scans library, manages database, finds duplicates |
 | `music_organizer.py` | Reorganizes folder structure, removes duplicates |
+| `music_lookup.py` | Looks up track titles from MusicBrainz API |
 | `music_catalog.db` | SQLite database containing the catalog |
 
 ## Usage
@@ -77,6 +78,24 @@ python music_organizer.py --find-partial
 
 # Rename those folders to "Artist - Album (partial)"
 python music_organizer.py --mark-partial
+```
+
+### Looking Up Track Titles
+
+Find actual titles for tracks with generic names like "Track 1", "Track 2":
+
+```bash
+# Find tracks with generic titles
+python music_lookup.py --find
+
+# Search MusicBrainz for actual track names
+python music_lookup.py --lookup
+
+# Apply the found titles to files and database
+python music_lookup.py --apply
+
+# Clear the MusicBrainz cache
+python music_lookup.py --clear-cache
 ```
 
 ## Naming Conventions
