@@ -1,0 +1,40 @@
+# Music files
+*.mp3
+*.m4a
+*.wav
+*.flac
+*.ogg
+*.wma
+*.aac
+
+# Database
+*.db
+
+# Logs
+reorganize_log_*.txt
+
+# Removed duplicates folder
+_Duplicates_Removed/
+
+# Music folders (Artist - Album pattern)
+*/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
